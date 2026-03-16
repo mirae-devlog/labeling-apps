@@ -72,6 +72,56 @@ const MAX_VERSIONS = 5;
 let autosaveEnabled = true;
 let _autosaveTimer = null;
 
+
+/* ═══════════════════════════════════════════════════════════
+   CLASS LIST PERSISTENCE
+   state.classes is persisted to localStorage so new classes
+   added at runtime survive page refresh (Ctrl+R).
+═══════════════════════════════════════════════════════════ */
+const VL_CLASSES_KEY = 'vl_classes';
+
+/**
+ * Persist current state.classes to localStorage.
+ * Called whenever classes are added, edited, or deleted.
+ */
+function saveClasses() {
+  try {
+    localStorage.setItem(VL_CLASSES_KEY, JSON.stringify(state.classes));
+  } catch(e) {}
+}
+
+/**
+ * Restore state.classes from localStorage.
+ * Merges saved classes with the hardcoded defaults:
+ *   - Built-in classes keep their original colors unless overridden
+ *   - New (custom) classes are appended after the built-ins
+ *   - Entries with null/undefined names are skipped (repair bad data)
+ * Returns number of classes restored beyond the defaults.
+ */
+function loadClasses() {
+  try {
+    const raw = localStorage.getItem(VL_CLASSES_KEY);
+    if (!raw) return 0;
+    const saved = JSON.parse(raw);
+    if (!Array.isArray(saved) || !saved.length) return 0;
+
+    let changed = 0;
+    saved.forEach(({ name, color }) => {
+      if (!name || name === 'undefined' || name === 'null') return; // skip corrupt
+      const existing = state.classes.find(c => c.name === name);
+      if (existing) {
+        // Update color if changed
+        if (color && existing.color !== color) { existing.color = color; changed++; }
+      } else {
+        // New class not in defaults — append
+        state.classes.push({ name, color: color || '#888888' });
+        changed++;
+      }
+    });
+    return changed;
+  } catch(e) { return 0; }
+}
+
 // ── Version key helpers ──
 function verKey(imgName) { return 'vlv2_versions_' + imgName; }
 function quickKey(imgName) { return 'vlv2_quick_' + imgName; }
@@ -839,6 +889,7 @@ function addClass() {
   const colors = ['#e040fb','#69f0ae','#ff8a65','#80d8ff','#f4ff81','#ea80fc','#ccff90','#a7ffeb'];
   state.classes.push({ name, color: colors[state.classes.length % colors.length] });
   inp.value = '';
+  saveClasses();
   renderClasses();
   // Auto-write classes.txt to open folder
   if (_folderHandle) {
@@ -2810,18 +2861,43 @@ function trRefreshDataset() {
 async function trPrepareDataset() {
   const url = beGetUrl();
 
-  // Pastikan semua annotations dari localStorage sudah di-load ke state
-  trHydrateAllAnnotations();
-
-  const labeled = state.images.filter(im => im.annotations && im.annotations.length > 0);
-  if (!labeled.length) { notify('Belum ada gambar yang dilabel!', 'warn'); return; }
-
   const btn    = document.getElementById('trPrepareBtn');
   const status = document.getElementById('trPrepareStatus');
   btn.disabled = true;
-  btn.textContent = '⏳ Menyiapkan...';
+  btn.textContent = '⏳ Membaca data...';
   status.style.display = 'block';
   status.style.color = 'var(--accent)';
+  status.textContent  = 'Memuat anotasi dari localStorage...';
+
+  // ── Step 1: Load annotations dari localStorage ──
+  const fromLS = trHydrateAllAnnotations();
+
+  // ── Step 2: Load annotations dari folder .txt untuk yang belum di-load ──
+  let fromFolder = 0;
+  if (_folderHandle) {
+    status.textContent = 'Membaca .txt dari folder (bisa makan waktu untuk dataset besar)...';
+    // Give UI time to update before blocking loop
+    await new Promise(r => setTimeout(r, 30));
+    fromFolder = await trHydrateFromFolder(status);
+  }
+
+  const labeled = state.images.filter(im => im.annotations && im.annotations.length > 0);
+  if (!labeled.length) {
+    btn.disabled = false;
+    btn.textContent = '📤 EXPORT DATASET KE SERVER';
+    status.textContent = '⚠ Tidak ada gambar yang dilabel';
+    status.style.color = 'var(--warn)';
+    notify('Belum ada gambar yang dilabel!', 'warn');
+    return;
+  }
+
+  trLog(`=== HYDRATION ===`, 'accent');
+  trLog(`localStorage: ${fromLS} gambar baru di-load`, 'info');
+  if (_folderHandle) trLog(`Folder .txt: ${fromFolder} gambar tambahan`, 'info');
+  trLog(`Total siap: ${labeled.length} / ${state.images.length} gambar`, 'ok');
+
+  status.textContent = `Menyiapkan ${labeled.length} gambar...`;
+  btn.textContent = '⏳ Menyiapkan...';
 
   const datasetPath = document.getElementById('trDatasetPath')?.value.trim() || 'dataset';
   const split = parseInt(document.getElementById('trSplitSlider')?.value || 80) / 100;
@@ -2832,7 +2908,7 @@ async function trPrepareDataset() {
   const valImgs    = shuffled.slice(trainCount);
 
   trLog(`=== EXPORT DATASET ===`, 'accent');
-  trLog(`${labeled.length} gambar → train:${trainImgs.length}  val:${valImgs.length}`, 'info');
+  trLog(`${labeled.length} gambar total → train:${trainImgs.length}  val:${valImgs.length}  (split ${Math.round(split*100)}/${100-Math.round(split*100)})`, 'info');
 
   // Helper: blob URL → base64 jpeg + capture natural dimensions
   async function imgToBase64(imgObj) {
@@ -4011,7 +4087,8 @@ function drawMarqueeRect() {
 }
 
 /* ── Custom model store — declared here (before init IIFE) to avoid TDZ ── */
-const CUSTOM_MODELS_KEY = 'vl_custom_models';
+const CUSTOM_MODELS_KEY    = 'vl_custom_models';
+const DELETED_BUILTINS_KEY = 'vl_deleted_builtins'; // Set of built-in model names user has hidden
 let _customModels    = {};
 let _cmEditingModel  = null;
 
@@ -4019,6 +4096,9 @@ let _cmEditingModel  = null;
    INIT
 ═══════════════════════════════════════════════════════════ */
 (function init() {
+  // ── Restore persisted class list FIRST (before renderClasses) ──
+  loadClasses();
+
   // Restore saved part number / model selection
   const savedModel = localStorage.getItem('vl_active_model');
   if (savedModel) {
@@ -4078,16 +4158,23 @@ let _cmEditingModel  = null;
 ═══════════════════════════════════════════════════════════ */
 
 /* ── Load / Save custom models ── */
+let _deletedBuiltins = new Set(); // built-in model names hidden by user
+
 function cmLoad() {
   try {
     const raw = localStorage.getItem(CUSTOM_MODELS_KEY);
     _customModels = raw ? JSON.parse(raw) : {};
   } catch(e) { _customModels = {}; }
+  try {
+    const raw2 = localStorage.getItem(DELETED_BUILTINS_KEY);
+    _deletedBuiltins = raw2 ? new Set(JSON.parse(raw2)) : new Set();
+  } catch(e) { _deletedBuiltins = new Set(); }
   cmMergeIntoModelClasses();
 }
 
 function cmSave() {
   try { localStorage.setItem(CUSTOM_MODELS_KEY, JSON.stringify(_customModels)); } catch(e) {}
+  try { localStorage.setItem(DELETED_BUILTINS_KEY, JSON.stringify([..._deletedBuiltins])); } catch(e) {}
   cmMergeIntoModelClasses();
 }
 
@@ -4117,7 +4204,14 @@ function cmRebuildDropdown() {
   const oldGrp = document.getElementById('customModelsOptgroup');
   if (oldGrp) oldGrp.remove();
 
-  const customNames = Object.keys(_customModels);
+  // Hide/show deleted built-in options
+  sel.querySelectorAll('option').forEach(opt => {
+    if (_BUILTIN_MODEL_NAMES.has(opt.value)) {
+      opt.hidden = _deletedBuiltins.has(opt.value);
+    }
+  });
+
+  const customNames = Object.keys(_customModels).filter(n => !_BUILTIN_MODEL_NAMES.has(n));
   if (!customNames.length) return;
 
   const grp = document.createElement('optgroup');
@@ -4226,11 +4320,12 @@ function _cmModelCardHTML(name, bom, isCustom) {
       <div class="cm-list-actions">
         <button class="cm-action-btn use"  onclick="cmUseModel('${name}')">▶ Pakai</button>
         <button class="cm-action-btn edit" onclick="cmOpenEdit('${name}')">✎ Edit</button>
-        ${isCustom && !MODEL_CLASSES._hardcoded?.includes(name)
+        ${isCustom
           ? `<button class="cm-action-btn del" onclick="cmConfirmDelete('${name}')">✕ Hapus</button>`
-          : hasOverride
-            ? `<button class="cm-action-btn del" style="font-size:8px" onclick="cmResetBuiltin('${name}')">↺ Reset</button>`
-            : ''}
+          : `<span style="display:flex;flex-direction:column;gap:3px">
+               ${hasOverride ? `<button class="cm-action-btn del" style="font-size:8px;padding:2px 6px" onclick="cmResetBuiltin('${name}')">↺ Reset</button>` : ''}
+               <button class="cm-action-btn del" style="font-size:8px;padding:2px 6px" onclick="cmHideBuiltin('${name}')">✕ Hapus</button>
+             </span>`}
       </div>
     </div>`;
 }
@@ -4253,11 +4348,38 @@ function _cmRenderCustomList(body) {
 }
 
 function _cmRenderBuiltinList(body) {
-  // Show all built-in models; if user has edited one it's in _customModels as an override
-  body.innerHTML = _BUILTIN_MODEL_NAMES_ARR.map(name => {
-    const bom = _customModels[name] || _BUILTIN_MODEL_BOMS[name];
-    return _cmModelCardHTML(name, bom, false);
-  }).join('');
+  const activeNames  = _BUILTIN_MODEL_NAMES_ARR.filter(n => !_deletedBuiltins.has(n));
+  const deletedNames = _BUILTIN_MODEL_NAMES_ARR.filter(n => _deletedBuiltins.has(n));
+
+  let html = '';
+  if (activeNames.length) {
+    html += activeNames.map(name => {
+      const bom = _customModels[name] || _BUILTIN_MODEL_BOMS[name];
+      return _cmModelCardHTML(name, bom, false);
+    }).join('');
+  }
+
+  if (deletedNames.length) {
+    html += `<div style="margin-top:10px;border-top:1px dashed var(--border);padding-top:8px">
+      <div style="font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:0.5px;margin-bottom:6px">
+        🗑 TERSEMBUNYI (${deletedNames.length})
+      </div>`;
+    html += deletedNames.map(name => `
+      <div class="cm-list-item" style="opacity:0.45">
+        <div style="flex:1;min-width:0">
+          <div class="cm-list-name" style="color:var(--muted)">${name}</div>
+          <div class="cm-list-meta">Model bawaan — disembunyikan</div>
+        </div>
+        <div class="cm-list-actions">
+          <button class="cm-action-btn use" onclick="cmRestoreBuiltin('${name}')"
+            style="border-color:rgba(57,255,20,0.3);color:var(--accent3)">↺ Pulihkan</button>
+        </div>
+      </div>`).join('');
+    html += `</div>`;
+  }
+
+  if (!html) html = `<div class="cm-empty">Semua model bawaan disembunyikan.</div>`;
+  body.innerHTML = html;
 }
 
 function cmUseModel(name) {
@@ -4522,6 +4644,7 @@ function cmCreateAndAddClass() {
                   '#a7ffeb','#ffe57f','#d500f9','#00bfa5','#64ffda','#ff6e40','#c6ff00'];
   const color = COLORS[state.classes.length % COLORS.length];
   state.classes.push({ name, color });
+  saveClasses();
 
   // Add to BOM with qty
   const qty = Math.max(1, parseInt(qtyInp?.value) || 1);
@@ -4685,6 +4808,8 @@ function cmSaveModel() {
 (function cmInit() {
   function runCmLoad() {
     cmLoad();
+    // After custom models loaded, repair any undefined class refs from pre-persist era
+    _repairUndefinedClassRefs();
     // Restore active model if it's a custom model (init() ran before we existed)
     const savedModel = localStorage.getItem('vl_active_model');
     if (savedModel && _customModels[savedModel]) {
@@ -5039,6 +5164,35 @@ function _migrateLocalStorage() {
   } catch(e) {
     console.warn('[VL] Migration error:', e);
   }
+
+  // Also repair any undefined class references in custom model BOMs
+  _repairUndefinedClassRefs();
+}
+
+/**
+ * Scan _customModels for BOM entries that reference class names
+ * that no longer exist in state.classes (e.g. after Ctrl+R wipe).
+ * Removes the broken keys and logs a warning.
+ * Runs after loadClasses() + cmLoad() so all classes are restored first.
+ */
+function _repairUndefinedClassRefs() {
+  let repaired = 0;
+  const classNames = new Set(state.classes.map(c => c.name));
+
+  Object.entries(_customModels).forEach(([modelName, bom]) => {
+    const broken = Object.keys(bom).filter(k =>
+      !k || k === 'undefined' || k === 'null' || !classNames.has(k)
+    );
+    if (broken.length) {
+      broken.forEach(k => { delete bom[k]; repaired++; });
+      console.warn(`[VL] Repaired model "${modelName}": removed bad keys [${broken.join(', ')}]`);
+    }
+  });
+
+  if (repaired > 0) {
+    cmSave();
+    console.log(`[VL] Repaired ${repaired} undefined class ref(s) in custom models`);
+  }
 }
 
 /**
@@ -5250,6 +5404,7 @@ function saveEditClass() {
   const oldName = state.classes[idx].name;
   state.classes[idx].name  = newName;
   state.classes[idx].color = newColor;
+  saveClasses();
 
   // Update all annotations classIdx references (idx stays the same, only name/color changes)
   // If name changed, update custom model BOMs that reference oldName
@@ -5309,6 +5464,7 @@ function deleteEditClass() {
 
   showModal('Hapus Kelas', msg, () => {
     state.classes.splice(idx, 1);
+    saveClasses();
 
     // Remap annotations: classIdx > idx shifts down by 1
     state.annotations.forEach(a => {
@@ -5485,6 +5641,7 @@ function importModelsJSON(event) {
           }
         });
         if (newClassCount > 0) {
+          saveClasses(); // one write after all new classes are appended
           renderClasses();
           if (_folderHandle) writeClassesTxtToFolder();
         }
@@ -5573,4 +5730,179 @@ function _finaliseImport(added, overwritten, skipped, newClassCount) {
   if (skipped)      parts.push(`${skipped} dilewati`);
   if (newClassCount) parts.push(`${newClassCount} kelas baru`);
   notify(`⬆ Import selesai: ${parts.join(' · ')}`);
+}
+
+/* ── Hide / Restore built-in models ── */
+function cmHideBuiltin(name) {
+  showModal(
+    '✕ Hapus Model Bawaan',
+    `Sembunyikan model "${name}" dari daftar?\n\nModel akan hilang dari dropdown dan daftar.\nKamu bisa pulihkan kembali via tab ⚙ BAWAAN.\n\nAksi ini tidak permanen.`,
+    () => {
+      _deletedBuiltins.add(name);
+      // Also clear any override
+      if (_customModels[name]) {
+        delete _customModels[name];
+      }
+      // If this was active, reset to none
+      if (activeModelFilter === name) {
+        activeModelFilter = null;
+        const sel = document.getElementById('pretrainedModel');
+        if (sel) sel.value = 'none';
+        renderClasses();
+      }
+      cmSave();
+      cmRebuildDropdown();
+      cmRenderList();
+      closeModal();
+      notify(`🗑 Model "${name}" disembunyikan · tab BAWAAN untuk pulihkan`);
+    },
+    'danger'
+  );
+}
+
+function cmRestoreBuiltin(name) {
+  _deletedBuiltins.delete(name);
+  cmSave();
+  cmRebuildDropdown();
+  cmRenderList();
+  notify(`↺ Model "${name}" dipulihkan`);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GARBAGE COLLECTOR — scan dan bersihkan localStorage korup
+═══════════════════════════════════════════════════════════ */
+
+/**
+ * Deep-scan localStorage untuk semua jenis sampah:
+ *   - Kunci dengan nama 'undefined', 'null', atau kosong
+ *   - JSON yang tidak bisa di-parse
+ *   - Annotation keys (vl_*) untuk gambar yang tidak ada di session
+ *   - Old-format keys (vlv2_quick_*)
+ *   - vl_*_meta keys (format lama)
+ *   - Custom model BOM entries yang mereferensi kelas tidak dikenal
+ * Tampilkan laporan sebelum konfirmasi hapus.
+ */
+function openGarbageCollector() {
+  const report = _scanGarbage();
+  const total  = report.items.length;
+  const sizeKB = (report.totalBytes / 1024).toFixed(1);
+
+  if (!total) {
+    notify('✓ localStorage bersih, tidak ada sampah ditemukan!');
+    return;
+  }
+
+  // Group by type for the report
+  const byType = {};
+  report.items.forEach(({ type }) => { byType[type] = (byType[type] || 0) + 1; });
+  const summary = Object.entries(byType)
+    .map(([t, n]) => `• ${n}× ${_gcTypeLabel(t)}`)
+    .join('\n');
+
+  showModal(
+    '🧹 Garbage Collector',
+    `Ditemukan ${total} entri sampah (±${sizeKB} KB):\n\n${summary}\n\nHapus semua? Aksi ini tidak bisa di-undo.`,
+    () => {
+      const removed = _executeGarbageClean(report.items);
+      closeModal();
+      updateStorageBar();
+      const s = getStorageStats();
+      notify(`🧹 ${removed} entri dihapus · sisa ${s.usedKB}KB`);
+      console.log('[VL GC] Removed items:', report.items.map(i => i.key));
+    },
+    'danger',
+    `Hapus ${total} Sampah`
+  );
+}
+
+function _gcTypeLabel(type) {
+  return {
+    'undefined_key':    'Kunci bernama "undefined"/"null"',
+    'corrupt_json':     'JSON rusak/tidak bisa dibaca',
+    'orphan_annotation':'Anotasi gambar tidak ada di session',
+    'old_format':       'Format lama (vlv2_quick, _meta)',
+    'broken_bom':       'BOM model dengan kelas tidak dikenal',
+    'empty_value':      'Nilai kosong / blank',
+  }[type] || type;
+}
+
+function _scanGarbage() {
+  const items      = [];
+  let totalBytes   = 0;
+  const classNames = new Set(state.classes.map(c => c.name));
+  const activeImgNames = new Set(state.images.map(im => 'vl_' + im.name));
+
+  const PROTECTED = new Set([
+    'vl_active_model', 'vl_gemini_key', 'vl_backend_url',
+    VL_CLASSES_KEY, CUSTOM_MODELS_KEY, DELETED_BUILTINS_KEY,
+  ]);
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || PROTECTED.has(key)) continue;
+
+    const val    = localStorage.getItem(key) || '';
+    const bytes  = (key.length + val.length) * 2;
+
+    // 1. Key itself is undefined/null string
+    if (key === 'undefined' || key === 'null' || key.includes('undefined') && key.startsWith('vl_')) {
+      items.push({ key, type: 'undefined_key', bytes }); totalBytes += bytes; continue;
+    }
+    // 2. Empty value
+    if (!val.trim()) {
+      items.push({ key, type: 'empty_value', bytes }); totalBytes += bytes; continue;
+    }
+    // 3. Old format: vlv2_quick_* or vl_*_meta
+    if (key.startsWith('vlv2_quick_') || (key.endsWith('_meta') && key.startsWith('vl_'))) {
+      items.push({ key, type: 'old_format', bytes }); totalBytes += bytes; continue;
+    }
+    // 4. vl_ annotation keys for images not in current session
+    if (key.startsWith('vl_') && !key.startsWith('vlv2_') &&
+        !PROTECTED.has(key) && !activeImgNames.has(key)) {
+      items.push({ key, type: 'orphan_annotation', bytes }); totalBytes += bytes; continue;
+    }
+    // 5. JSON keys that can't be parsed
+    if (key.startsWith('vlv2_versions_')) {
+      try { JSON.parse(val); } catch(_) {
+        items.push({ key, type: 'corrupt_json', bytes }); totalBytes += bytes;
+      }
+    }
+  }
+
+  // 6. Custom model BOMs with unknown class references
+  Object.entries(_customModels).forEach(([modelName, bom]) => {
+    const broken = Object.keys(bom).filter(k =>
+      !k || k === 'undefined' || k === 'null' || !classNames.has(k)
+    );
+    if (broken.length) {
+      items.push({
+        key:   `_customModels["${modelName}"] keys: [${broken.join(', ')}]`,
+        type:  'broken_bom',
+        bytes: 0,
+        modelName,
+        brokenKeys: broken,
+        inMemory: true, // not a localStorage key — in-memory fix
+      });
+    }
+  });
+
+  return { items, totalBytes };
+}
+
+function _executeGarbageClean(items) {
+  let removed = 0;
+  items.forEach(item => {
+    if (item.inMemory) {
+      // Fix broken BOM in _customModels
+      if (item.brokenKeys && _customModels[item.modelName]) {
+        item.brokenKeys.forEach(k => delete _customModels[item.modelName][k]);
+      }
+    } else {
+      try { localStorage.removeItem(item.key); removed++; } catch(_) {}
+    }
+  });
+  // Persist fixed custom models
+  const hadBomFixes = items.some(i => i.inMemory);
+  if (hadBomFixes) cmSave();
+  return removed + items.filter(i => i.inMemory).length;
 }
