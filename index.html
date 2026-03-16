@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VisionLabel Pro — Bounding Box Labeling Dashboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">Vision<span>Label</span> Pro</div>
+  <div class="topbar-tabs">
+    <button class="tab-btn active" onclick="switchPage('labeling', this)">⬡ Labeling</button>
+    <button class="tab-btn" onclick="switchPage('training', this)">⚡ Training</button>
+    <button class="tab-btn" onclick="switchPage('results', this)">◈ Dashboard</button>
+  </div>
+  <div class="status-pill">
+    <div class="dot"></div>
+    SISTEM AKTIF
+  </div>
+</div>
+
+<!-- PAGE: LABELING -->
+<div class="page active" id="page-labeling">
+  <div class="labeling-layout">
+
+    <div class="panel-left">
+      <!-- ZONA ATAS: scrollable -->
+      <div class="panel-top-scroll">
+      <div class="panel-title">AI & Backend</div>
+
+      <div class="model-select-wrap">
+
+        <!-- Gemini API Key Input -->
+        <div style="margin-top:8px">
+          <label style="display:block;font-size:9px;font-family:var(--mono);color:var(--muted);letter-spacing:1px;margin-bottom:4px;text-transform:uppercase">
+            Gemini API Key
+            <span class="gemini-badge">✦ Gemini AI</span>
+          </label>
+          <div style="display:flex;gap:4px">
+            <input type="password" id="apiKeyInput"
+              placeholder="AIzaSy..."
+              style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--accent);font-family:var(--mono);font-size:10px;padding:5px 8px;border-radius:4px;outline:none;min-width:0;"
+              oninput="saveApiKey(this.value)"
+              onfocus="this.style.borderColor='var(--accent)'"
+              onblur="this.style.borderColor='var(--border)'">
+            <button onclick="toggleApiKeyVisibility()" id="apiKeyToggle"
+              style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-size:11px;padding:4px 7px;border-radius:4px;cursor:pointer;flex-shrink:0"
+              title="Tampilkan/sembunyikan">👁</button>
+          </div>
+          <div id="apiKeyStatus" style="font-size:9px;font-family:var(--mono);color:var(--muted);margin-top:3px">
+            Masukkan Gemini API key untuk Auto Label
+          </div>
+        </div>
+
+        <!-- Gemini Model Selector -->
+        <div style="margin-top:6px">
+          <label style="display:block;font-size:9px;font-family:var(--mono);color:var(--muted);letter-spacing:1px;margin-bottom:4px;text-transform:uppercase">Gemini Model</label>
+          <select id="geminiModel" class="model-select" style="font-size:10px">
+            <option value="gemini-1.5-flash-latest" selected>gemini-1.5-flash ✓ (free tier)</option>
+            <option value="gemini-2.0-flash">gemini-2.0-flash ⚡ (quota terbatas)</option>
+            <option value="gemini-1.5-pro-latest">gemini-1.5-pro (akurat)</option>
+          </select>
+        </div>
+
+        <!-- ═══ PYTHON BACKEND PANEL ═══ -->
+        <div class="backend-section">
+          <div class="backend-title">
+            <span>🐍 YOLO Backend</span>
+            <div style="display:flex;align-items:center;gap:5px">
+              <span id="backendConnLabel" style="font-size:8px;color:var(--muted)">Offline</span>
+              <div class="backend-conn-dot" id="backendDot"></div>
+            </div>
+          </div>
+          <input class="backend-input" id="backendUrl"
+            value="http://localhost:5000"
+            placeholder="http://localhost:5000"
+            oninput="backendUrlChanged(); beSaveUrl(this.value)">
+          <div class="model-file-row" style="flex-direction:column;gap:5px">
+            <!-- Model picker: populated from server /list_models -->
+            <div style="display:flex;gap:4px;align-items:center">
+              <select id="beModelSelect"
+                style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);
+                       font-family:var(--mono);font-size:9px;padding:4px 6px;border-radius:4px;outline:none"
+                onchange="beModelSelectChanged()">
+                <option value="">— Pilih model .pt —</option>
+              </select>
+              <button onclick="beRefreshModels()" title="Scan ulang folder models/"
+                style="background:rgba(0,229,255,0.08);border:1px solid rgba(0,229,255,0.3);color:var(--accent);
+                       font-family:var(--mono);font-size:11px;padding:4px 7px;border-radius:3px;cursor:pointer"
+                id="beRefreshBtn">↺</button>
+            </div>
+            <!-- Manual path fallback -->
+            <div style="display:flex;gap:4px;align-items:center">
+              <input id="backendModelPath" placeholder="atau ketik path manual…" value=""
+                style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--muted);
+                       font-family:var(--mono);font-size:9px;padding:4px 6px;border-radius:4px;outline:none">
+              <button onclick="backendLoadModel()" title="Load model ke server"
+                style="background:rgba(57,255,20,0.1);border:1px solid rgba(57,255,20,0.4);color:var(--accent3);
+                       font-family:var(--mono);font-size:10px;font-weight:bold;padding:4px 9px;border-radius:3px;cursor:pointer">⚡</button>
+            </div>
+            <div id="beModelScanStatus" style="font-family:var(--mono);font-size:8px;color:var(--muted);display:none"></div>
+          </div>
+          <div class="backend-status" id="backendStatus">Belum terhubung ke server</div>
+          <button class="backend-btn connect" onclick="backendConnect()">
+            <span>⚡</span> Hubungkan Server
+          </button>
+          <div class="backend-conf">
+            <label>Conf</label>
+            <input type="range" id="beConfThresh" min="5" max="95" value="25"
+              oninput="document.getElementById('beConfVal').textContent=(this.value/100).toFixed(2)">
+            <span class="backend-conf-val" id="beConfVal">0.25</span>
+          </div>
+          <div class="backend-conf">
+            <label>IoU</label>
+            <input type="range" id="beIouThresh" min="10" max="90" value="45"
+              oninput="document.getElementById('beIouVal').textContent=(this.value/100).toFixed(2)">
+            <span class="backend-conf-val" id="beIouVal">0.45</span>
+          </div>
+          <div class="backend-progress" id="backendProgress">
+            <div class="backend-progress-fill" id="backendProgressFill"></div>
+          </div>
+          <button class="backend-btn run" id="beRunBtn" onclick="backendDetectCurrent()" disabled>
+            <span>▶</span> Deteksi Gambar Ini
+          </button>
+          <div class="backend-row2">
+            <button class="backend-btn run-all" id="beRunAllBtn" onclick="backendDetectAll()" disabled
+              style="border-color:rgba(255,61,90,0.4);color:var(--danger)"
+              title="⚠ Akan memproses SEMUA gambar termasuk yang sudah dilabeli — akan ada konfirmasi">
+              <span>⚡</span> Semua ⚠
+            </button>
+            <button class="backend-btn run-all" id="beRunUnlabeledBtn" onclick="backendDetectUnlabeled()" disabled
+              style="border-color:rgba(0,229,255,0.3);color:var(--accent);">
+              <span>◎</span> Belum Dilabeli
+            </button>
+          </div>
+          <div id="beModelInfo" style="display:none;margin-top:6px;padding:5px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:3px">
+            <div style="font-family:var(--mono);font-size:8px;color:var(--accent2);margin-bottom:3px">MODEL INFO</div>
+            <div id="beModelInfoText" style="font-family:var(--mono);font-size:8px;color:var(--muted);line-height:1.7"></div>
+          </div>
+        </div>
+
+        <button class="ai-assist-btn" id="aiAssistBtn" onclick="runAIAssist()">
+          <span>✦</span> AUTO LABEL (GEMINI)
+        </button>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;padding:0 2px">
+          <span style="font-size:9px;font-family:var(--mono);color:var(--muted)">Contoh:</span>
+          <span id="sampleCountBadge" style="font-size:9px;font-family:var(--mono);color:var(--warn)">0 contoh</span>
+        </div>
+      </div>
+
+      </div><!-- /panel-top-scroll -->
+
+      <!-- ZONA BAWAH: fixed height, img-list scroll di dalam -->
+      <div class="panel-bottom">
+      <div class="panel-title" style="margin-top:0;display:flex;align-items:center;justify-content:space-between;padding:8px 12px">
+        <span>File Gambar</span>
+        <span id="imgListCount" style="font-size:9px;color:var(--muted)">0 file</span>
+      </div>
+
+      <div class="img-list" id="imgList"></div>
+
+      <div style="padding:10px 12px; border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+        <label class="ai-assist-btn" style="cursor:pointer;">
+          <span>+</span> Upload Gambar
+          <input type="file" id="fileInput" accept="image/*" multiple onchange="handleFileUpload(this)">
+        </label>
+        <div style="display:flex;gap:6px">
+          <button class="btn-secondary" style="flex:1;padding:6px 4px;font-size:10px" onclick="prevImage()">◀ Prev</button>
+          <span id="imgNavCounter" style="font-family:var(--mono);font-size:9px;color:var(--muted);display:flex;align-items:center;white-space:nowrap">— / —</span>
+          <button class="btn-secondary" style="flex:1;padding:6px 4px;font-size:10px" onclick="nextImage()">Next ▶</button>
+        </div>
+      </div>
+      </div><!-- /panel-bottom -->
+    </div>
+
+    <!-- CENTER: Canvas -->
+    <div class="canvas-wrap">
+      <div class="canvas-toolbar">
+        <div class="tool-group">
+          <button class="tool-btn active tooltip" id="btnBox" onclick="setTool('box')" data-tip="Gambar BBox [B]">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="12" height="12" rx="1"/></svg>
+          </button>
+          <button class="tool-btn tooltip" id="btnSelect" onclick="setTool('select')" data-tip="Select & Pindah [V]">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M2 2l4 10 2-4 4-2z"/></svg>
+          </button>
+          <button class="tool-btn tooltip" id="btnPan" onclick="setTool('pan')" data-tip="Geser Kanvas [H]">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M7 1v2M7 11v2M1 7h2M11 7h2M4 4l1.5 1.5M8.5 8.5L10 10M10 4l-1.5 1.5M5.5 8.5L4 10" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="7" cy="7" r="2"/></svg>
+          </button>
+        </div>
+        <div class="toolbar-sep"></div>
+        <div class="tool-group">
+          <button class="tool-btn tooltip" onclick="zoomOut()" data-tip="Zoom Out [-]">−</button>
+          <div class="zoom-display" id="zoomDisplay" onclick="resetZoom()" title="Klik untuk fit" style="cursor:pointer">100%</div>
+          <button class="tool-btn tooltip" onclick="zoomIn()" data-tip="Zoom In [+]">+</button>
+        </div>
+        <div class="toolbar-sep"></div>
+        <div class="tool-group">
+          <button class="tool-btn tooltip" id="btnCopy" onclick="copySelected()" data-tip="Copy [Ctrl+C]" style="opacity:0.35">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="4" y="4" width="8" height="8" rx="1"/><path d="M2 9V2h7"/></svg>
+          </button>
+          <button class="tool-btn tooltip" id="btnPaste" onclick="pasteAnno()" data-tip="Paste di posisi cursor [Ctrl+V]" style="opacity:0.35">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="3" width="9" height="9" rx="1"/><path d="M4 3V1h6v3H4z"/></svg>
+          </button>
+          <button class="tool-btn tooltip" onclick="duplicateSelected()" data-tip="Duplicate [Ctrl+D]">⧉</button>
+          <button class="tool-btn tooltip" onclick="selectAndCopySameClass()" data-tip="Select+Copy Kelas Sama [Ctrl+Shift+C]" style="font-size:11px;letter-spacing:-1px">⊕C</button>
+          <button class="tool-btn tooltip" onclick="openRotateOverlay()" data-tip="Rotate Seleksi Mengelilingi Sumbu [R]" style="font-size:13px">↻</button>
+          <button class="tool-btn tooltip" onclick="copyFromPrevImage()" data-tip="Copy dari gambar sebelumnya [C]">⊕</button>
+        </div>
+        <div class="toolbar-sep"></div>
+        <div class="tool-group">
+          <button class="tool-btn tooltip" id="btnUndo" onclick="undoLast()" data-tip="Undo [Ctrl+Z]" style="opacity:0.35">↩</button>
+          <button class="tool-btn tooltip" id="btnRedo" onclick="redoLast()" data-tip="Redo [Ctrl+Y]" style="opacity:0.35">↪</button>
+          <button class="tool-btn tooltip" onclick="clearAll()" data-tip="Hapus semua box">🗑</button>
+        </div>
+        <div class="toolbar-sep"></div>
+        <div class="toolbar-info">
+          <div id="toolModeLabel" class="tool-mode-label mode-box">📦 BOX</div>
+          <div class="toolbar-coords">
+            <span id="cursorInfo" style="color:var(--accent);font-size:9px">x:— y:—</span>
+            <span id="selInfo" style="color:var(--muted);font-size:9px">no sel</span>
+          </div>
+        </div>
+        <div id="autosavePill" class="autosave-pill" style="display:none">
+          <span class="autosave-dot"></span>SAVED
+        </div>
+      </div>
+
+      <div class="canvas-container" id="canvasContainer"
+           onmousedown="canvasMouseDown(event)"
+           onmousemove="canvasMouseMove(event)"
+           onmouseup="canvasMouseUp(event)"
+           onmouseleave="canvasMouseLeave(event)"
+           oncontextmenu="canvasContextMenu(event); return false;">
+        <img id="imageDisplay" style="display:none;" draggable="false" alt="">
+        <canvas id="labelCanvas"></canvas>
+        <div class="find-highlight-ring" id="findHighlightRing"></div>
+
+        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()"
+             ondragover="event.preventDefault();this.classList.add('drag-over')"
+             ondragleave="this.classList.remove('drag-over')"
+             ondrop="handleDrop(event)">
+          <div class="icon">🖼️</div>
+          <p>Drop gambar di sini atau klik untuk upload</p>
+          <p style="margin-top:6px;opacity:0.5">Supports: JPG, PNG, BMP</p>
+        </div>
+
+        <div class="shortcut-panel collapsed" id="shortcutPanel">
+          <button class="sk-toggle-btn" onclick="toggleShortcutPanel()" title="Shortcut keys">⌨</button>
+          <div class="sk-body">
+            <span class="sk-title">Shortcut Keys</span>
+            <div class="sk-row"><kbd>B</kbd><span>Box</span> <kbd>V</kbd><span>Select</span> <kbd>H</kbd><span>Pan</span></div>
+            <div class="sk-sep"></div>
+            <div class="sk-row"><kbd>Scroll</kbd><span>Zoom (smooth)</span></div>
+            <div class="sk-row"><kbd>0</kbd><span>Fit ke layar</span></div>
+            <div class="sk-sep"></div>
+            <div class="sk-row"><kbd>Ctrl+C</kbd><span>Copy sel</span></div>
+            <div class="sk-row"><kbd>Ctrl+⇧+C</kbd><span>Copy semua kelas sama</span></div>
+            <div class="sk-row"><kbd>Ctrl+V</kbd><span>Paste di cursor</span></div>
+            <div class="sk-row"><kbd>Ctrl+D</kbd><span>Duplicate</span></div>
+            <div class="sk-row"><kbd>C</kbd><span>Copy prev img</span></div>
+            <div class="sk-sep"></div>
+            <div class="sk-row"><kbd>→</kbd><span>Next img</span></div>
+            <div class="sk-row"><kbd>←</kbd><span>Prev img</span></div>
+            <div class="sk-sep"></div>
+            <div class="sk-row"><kbd>Del</kbd><span>Hapus sel</span></div>
+            <div class="sk-row"><kbd>Ctrl+A</kbd><span>Pilih semua</span></div>
+            <div class="sk-row"><kbd>R</kbd><span>Rotate seleksi</span></div>
+            <div class="sk-row"><kbd>↑↓</kbd><span>Geser box 1px</span></div>
+            <div class="sk-row"><kbd>Shift+↑↓←→</kbd><span>Geser 5px</span></div>
+            <div class="sk-row"><kbd>Esc</kbd><span>Deselect</span></div>
+            <div class="sk-row"><kbd>Ctrl+Z</kbd><span>Undo 1 langkah</span></div>
+            <div class="sk-row"><kbd>Ctrl+⇧+Z</kbd><span>Undo semua</span></div>
+            <div class="sk-row"><kbd>Ctrl+Y</kbd><span>Redo</span></div>
+            <div class="sk-sep"></div>
+            <div class="sk-row"><kbd>Ctrl+F</kbd><span>Cari Box #</span></div>
+            <div class="sk-row"><kbd>Ctrl+S</kbd><span>Quick Save</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Classes & Annotations + Save Panel -->
+    <div class="panel-right">
+      <div class="class-section">
+        <!-- Model selector compact di atas class list -->
+        <div style="padding:8px 10px 6px;border-bottom:1px solid var(--border);background:var(--surface)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">Kelas Label</span>
+            <div style="display:flex;gap:4px;align-items:center">
+              <span id="classCountBadge" style="font-family:var(--mono);font-size:9px;color:var(--accent);background:rgba(0,229,255,0.08);padding:1px 6px;border-radius:3px">28 KELAS</span>
+              <button onclick="openCustomModelListModal()" title="Kelola Model Custom"
+                style="background:rgba(255,107,53,0.12);border:1px solid rgba(255,107,53,0.4);color:var(--accent2);
+                       font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:3px;cursor:pointer;letter-spacing:0.5px">⊕ Model</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:4px;align-items:stretch">
+            <select id="pretrainedModel" onchange="onModelChange()"
+              style="flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);color:var(--text);
+                     font-family:var(--mono);font-size:10px;padding:5px 8px;border-radius:4px;outline:none;cursor:pointer;
+                     appearance:none;-webkit-appearance:none;
+                     background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%226%22><path d=%22M0 0l5 6 5-6z%22 fill=%22%236b7280%22/></svg>');
+                     background-repeat:no-repeat;background-position:right 8px center">
+            <option value="none">— Semua Kelas (Manual) —</option>
+            <optgroup label="── Part Number ──">
+              <option value="0K153">0K153</option>
+              <option value="1KD IMV-71">1KD IMV-71</option>
+              <option value="2KDH-70715">2KDH-70715</option>
+              <option value="71381 H1A">71381 H1A</option>
+              <option value="71491 H2GA">71491 H2GA</option>
+              <option value="DTX-162A">DTX-162A</option>
+              <option value="DTX-164A">DTX-164A</option>
+              <option value="DTX-165A">DTX-165A</option>
+              <option value="DTX-163A">DTX-163A</option>
+              <option value="E2RB">E2RB</option>
+              <option value="EZ0S">EZ0S</option>
+              <option value="EZ12 1GR">EZ12 1GR</option>
+              <option value="EZ50-1TRGP">EZ50-1TRGP</option>
+              <option value="EZ88">EZ88</option>
+              <option value="F1A">F1A</option>
+              <option value="F1B">F1B</option>
+              <option value="H4">H4</option>
+              <option value="2KDL">2KDL</option>
+              <option value="TT207">TT207</option>
+              <option value="71501-G1A">71501-G1A</option>
+              <option value="V6">V6</option>
+              <option value="DTX-161A">DTX-161A</option>
+              <option value="DTX-233A">DTX-233A</option>
+              <option value="71222">71222</option>
+              <option value="18KD">18KD</option>
+            </optgroup>
+            <optgroup label="── YOLO Model ──">
+              <option value="__yolo_v1">YOLOv8n — Clutch_v1</option>
+              <option value="__yolo_v2">YOLOv8s — Clutch_v2 ★</option>
+              <option value="__yolo_v3">YOLOv8m — Clutch_v3</option>
+            </optgroup>
+          </select>
+          <!-- validation chip -->
+            </select><!-- end model select -->
+            <button id="editModelBtn" onclick="openEditModelModal()" title="Edit BOM model ini"
+              style="display:none;flex-shrink:0;padding:0 9px;background:rgba(0,229,255,0.08);
+                     border:1px solid rgba(0,229,255,0.3);color:var(--accent);font-family:var(--mono);
+                     font-size:11px;border-radius:4px;cursor:pointer;white-space:nowrap">✎</button>
+          </div><!-- end model-select-row -->
+          <div id="modelInfoChip" style="display:none;margin-top:5px;padding:4px 7px;background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.18);border-radius:4px;font-family:var(--mono);font-size:8px;line-height:1.8;color:var(--muted)"></div>
+        </div>
+
+        <div class="class-scroll" id="classItems"></div>
+        <div class="add-class-input">
+          <input type="text" id="newClassName" placeholder="+ kelas baru..." onkeydown="if(event.key==='Enter')addClass()">
+          <button onclick="addClass()" title="Tambah kelas">+</button>
+        </div>
+      </div>
+
+      <div class="anno-section">
+        <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;flex-shrink:0">
+          <span>Anotasi</span>
+          <span id="annoCountBadge" style="font-size:9px;color:var(--muted)">0 box</span>
+        </div>
+        <div class="anno-list" id="annoList">
+          <p style="font-family:var(--mono);font-size:10px;color:var(--muted);padding:16px 8px;text-align:center;line-height:1.8">Belum ada anotasi.<br>Gambar box di kanvas.</p>
+        </div>
+      </div>
+
+      <!-- ═══ SAVE PANEL ═══ -->
+      <div class="save-panel">
+        <div class="save-panel-header" onclick="toggleSavePanel()">
+          <div class="save-panel-title">
+            💾 Save & Versi
+            <span id="verCountBadge" style="font-size:8px;background:rgba(255,214,0,0.15);border:1px solid rgba(255,214,0,0.3);color:var(--warn);padding:1px 5px;border-radius:2px;display:none">0 ver</span>
+          </div>
+          <span class="save-panel-toggle open" id="savePanelToggle">▲</span>
+        </div>
+        <div class="save-panel-body" id="savePanelBody">
+          <!-- Autosave toggle -->
+          <div class="autosave-toggle-row">
+            <span class="autosave-toggle-label">
+              <span id="autosaveStatusDot" style="width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0;display:inline-block"></span>
+              Auto Save
+            </span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="autosaveToggle" checked onchange="onAutosaveToggle()">
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+          </div>
+
+          <!-- Storage usage indicator -->
+          <div id="storageBar" style="margin-bottom:6px;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <span style="font-family:var(--mono);font-size:8px;color:var(--muted)">💾 STORAGE</span>
+              <div style="display:flex;gap:4px">
+                <button onclick="showStorageStats()" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:8px;padding:1px 6px;border-radius:2px;cursor:pointer">ℹ</button>
+                <button onclick="purgeOrphanedStorage()" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:8px;padding:1px 6px;border-radius:2px;cursor:pointer" title="Bersihkan entri lama">🧹</button>
+              </div>
+            </div>
+            <div style="background:var(--bg);border-radius:3px;height:4px;overflow:hidden">
+              <div id="storageFill" style="height:100%;background:var(--accent3);border-radius:3px;width:0%;transition:width 0.3s"></div>
+            </div>
+            <div id="storageLabel" style="font-family:var(--mono);font-size:7px;color:var(--muted);margin-top:2px">— KB / 5120KB</div>
+          </div>
+
+          <!-- Save mode buttons -->
+          <div class="save-mode-row">
+            <button class="save-mode-btn quick-save" onclick="quickSave()" title="Simpan cepat ke localStorage">
+              <span>⚡</span> Quick
+            </button>
+            <button class="save-mode-btn version-save" onclick="versionSave()" title="Simpan sebagai versi baru (maks 5)">
+              <span>📌</span> Ver Save
+            </button>
+          </div>
+
+          <!-- Version history -->
+          <div id="versionHistoryWrap" style="display:none">
+            <div style="font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between">
+              <span>Versi Tersimpan</span>
+              <button onclick="clearAllVersions()" style="background:none;border:none;color:var(--danger);font-size:9px;cursor:pointer;font-family:var(--mono)">× Hapus Semua</button>
+            </div>
+            <div class="version-list" id="versionList"></div>
+          </div>
+        </div>
+
+        <!-- Folder / File System Access -->
+        <div class="folder-save-section">
+          <div class="folder-save-title">
+            <span>📁 Export ke Folder Asal</span>
+            <span id="fsFolderCount" style="font-size:8px;color:var(--muted)"></span>
+          </div>
+          <div class="folder-path-display no-folder" id="folderPathDisplay">Belum ada folder dipilih</div>
+          <div class="fs-api-warn" id="fsApiWarn">
+            ⚠ Browser ini tidak mendukung File System Access API. Gunakan Chrome/Edge terbaru untuk fitur ini.
+          </div>
+          <div class="folder-btn-row">
+            <button class="folder-btn pick" onclick="pickFolder()">📂 Pilih Folder</button>
+            <button class="folder-btn write" id="btnWriteCurrent" onclick="writeTxtCurrent()" disabled>✎ Tulis TXT</button>
+          </div>
+          <button class="folder-btn write-all" id="btnWriteAll" onclick="writeTxtAll()" disabled style="width:100%;margin-top:3px">
+            ⚡ Tulis Semua TXT ke Folder
+          </button>
+        </div>
+
+        <!-- Reset / Reload from TXT — collapsible danger zone -->
+        <div style="margin-top:4px">
+          <button onclick="toggleResetPanel()" id="resetPanelToggle"
+            style="width:100%;padding:6px 10px;background:rgba(255,61,90,0.06);
+                   border:1px solid rgba(255,61,90,0.25);color:rgba(255,61,90,0.7);
+                   font-family:var(--mono);font-size:9px;letter-spacing:0.5px;
+                   border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;
+                   text-align:left">
+            <span>🔄 Reset &amp; Reload dari TXT</span>
+            <span id="resetPanelChevron" style="font-size:8px;transition:transform 0.2s">▼</span>
+          </button>
+          <div id="resetPanel" style="display:none;margin-top:2px;padding:10px;background:rgba(255,61,90,0.04);
+               border:1px solid rgba(255,61,90,0.2);border-radius:4px">
+            <p style="font-family:var(--mono);font-size:8px;color:var(--muted);line-height:1.7;margin:0 0 8px">
+              Hapus memori localStorage lalu reload dari <code style="color:var(--accent2)">.txt</code> di folder.
+              Gunakan jika <strong style="color:var(--warn)">auto-labeling menimpa hasil manual</strong>.
+            </p>
+            <div style="display:flex;gap:4px;margin-bottom:5px">
+              <button onclick="resetCurrentFromTxt()"
+                style="flex:1;padding:7px 4px;background:rgba(255,61,90,0.08);border:1px solid rgba(255,61,90,0.4);
+                       color:var(--danger);font-family:var(--mono);font-size:9px;letter-spacing:0.5px;
+                       border-radius:4px;cursor:pointer">
+                ↺ Gambar Ini
+              </button>
+              <button onclick="resetAllFromTxt()"
+                style="flex:1;padding:7px 4px;background:rgba(255,61,90,0.12);border:1px solid rgba(255,61,90,0.5);
+                       color:var(--danger);font-family:var(--mono);font-size:9px;font-weight:bold;
+                       border-radius:4px;cursor:pointer">
+                ↺ Semua Gambar
+              </button>
+            </div>
+            <button onclick="clearAllLocalStorage()"
+              style="width:100%;padding:5px;background:transparent;
+                     border:1px dashed rgba(255,61,90,0.25);color:rgba(255,61,90,0.5);
+                     font-family:var(--mono);font-size:8px;letter-spacing:0.5px;
+                     border-radius:4px;cursor:pointer">
+              🗑 Hapus Semua Memori (tanpa reload)
+            </button>
+          </div>
+        </div>
+
+        <!-- Export section -->
+        <div class="export-section">
+          <button class="btn-secondary" onclick="exportYOLO()" style="font-size:9px">⬇ Download TXT (gambar ini)</button>
+          <button class="btn-secondary" onclick="exportAllYOLO()" style="font-size:9px;border-color:rgba(0,229,255,0.35);color:var(--accent)">⬇ Download SEMUA TXT</button>
+          <button class="btn-secondary" onclick="exportCOCO()" style="font-size:9px">⬇ Export COCO JSON</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE: TRAINING -->
+<div class="page" id="page-training">
+  <div class="training-layout">
+    <div class="page-header">
+      <h2>Training Pipeline</h2>
+      <p>Export dataset dari label manual → Train YOLO → Gunakan weight untuk auto-label</p>
+    </div>
+
+    <!-- STEP INDICATOR -->
+    <div id="pipelineSteps" style="display:flex;gap:0;margin-bottom:20px;border-radius:8px;overflow:hidden;border:1px solid var(--border)">
+      <div class="pipe-step active" id="pstep1" style="flex:1;padding:10px 14px;background:var(--surface2);border-right:1px solid var(--border);cursor:pointer" onclick="scrollToStep(1)">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">LANGKAH 1</div>
+        <div style="font-size:12px;font-weight:600;margin-top:2px;color:var(--accent)">📦 Dataset</div>
+      </div>
+      <div class="pipe-step" id="pstep2" style="flex:1;padding:10px 14px;background:var(--surface);border-right:1px solid var(--border);cursor:pointer" onclick="scrollToStep(2)">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">LANGKAH 2</div>
+        <div style="font-size:12px;font-weight:600;margin-top:2px;color:var(--muted)">⚙ Konfigurasi</div>
+      </div>
+      <div class="pipe-step" id="pstep3" style="flex:1;padding:10px 14px;background:var(--surface);border-right:1px solid var(--border);cursor:pointer" onclick="scrollToStep(3)">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">LANGKAH 3</div>
+        <div style="font-size:12px;font-weight:600;margin-top:2px;color:var(--muted)">⚡ Training</div>
+      </div>
+      <div class="pipe-step" id="pstep4" style="flex:1;padding:10px 14px;background:var(--surface);cursor:pointer" onclick="scrollToStep(4)">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">LANGKAH 4</div>
+        <div style="font-size:12px;font-weight:600;margin-top:2px;color:var(--muted)">🚀 Deploy</div>
+      </div>
+    </div>
+
+    <div class="training-grid">
+
+      <!-- ══ STEP 1: DATASET ══ -->
+      <div class="card" id="stepCard1">
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>📦 Step 1 — Dataset dari Labeling</span>
+          <button onclick="trRefreshDataset()" style="background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.3);color:var(--accent);font-size:10px;padding:3px 10px;border-radius:4px;cursor:pointer;font-family:var(--mono)">↻ Refresh</button>
+        </div>
+
+        <!-- Dataset stats live dari state -->
+        <div class="dataset-stats" style="margin-bottom:12px">
+          <div class="stat-box"><span class="num" id="trTotalImgs">0</span><span class="lbl">Gambar</span></div>
+          <div class="stat-box"><span class="num" id="trLabeledImgs">0</span><span class="lbl">Sudah Dilabel</span></div>
+          <div class="stat-box"><span class="num" id="trTotalBoxes">0</span><span class="lbl">Total Box</span></div>
+          <div class="stat-box"><span class="num" id="trActiveClasses">0</span><span class="lbl">Kelas Aktif</span></div>
+        </div>
+
+        <!-- Part number filter -->
+        <div class="form-row">
+          <label>Filter Part Number (opsional)</label>
+          <select class="form-select" id="trPartFilter" onchange="trRefreshDataset()">
+            <option value="">— Semua Part Number —</option>
+            <option value="0K153">0K153</option>
+            <option value="1KD IMV-71">1KD IMV-71</option>
+            <option value="2KDH-70715">2KDH-70715</option>
+            <option value="71381 H1A">71381 H1A</option>
+            <option value="71491 H2GA">71491 H2GA</option>
+            <option value="DTX-162A">DTX-162A</option>
+            <option value="DTX-164A">DTX-164A</option>
+            <option value="DTX-165A">DTX-165A</option>
+            <option value="DTX-163A">DTX-163A</option>
+            <option value="E2RB">E2RB</option>
+            <option value="EZ0S">EZ0S</option>
+            <option value="EZ12 1GR">EZ12 1GR</option>
+            <option value="EZ50-1TRGP">EZ50-1TRGP</option>
+            <option value="EZ88">EZ88</option>
+            <option value="F1A">F1A</option>
+            <option value="F1B">F1B</option>
+            <option value="H4">H4</option>
+            <option value="2KDL">2KDL</option>
+            <option value="TT207">TT207</option>
+            <option value="71501-G1A">71501-G1A</option>
+            <option value="V6">V6</option>
+            <option value="DTX-161A">DTX-161A</option>
+            <option value="DTX-233A">DTX-233A</option>
+            <option value="71222">71222</option>
+            <option value="18KD">18KD</option>
+          </select>
+        </div>
+
+        <!-- Train/Val split -->
+        <div class="form-row">
+          <label>Split Train / Val</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="range" id="trSplitSlider" min="50" max="90" value="80" oninput="trUpdateSplitLabel()"
+              style="flex:1;accent-color:var(--accent)">
+            <span id="trSplitLabel" style="font-family:var(--mono);font-size:11px;color:var(--accent);white-space:nowrap;min-width:80px">Train 80% / Val 20%</span>
+          </div>
+        </div>
+
+        <!-- Dataset output path -->
+        <div class="form-row">
+          <label>Output Folder Dataset <span style="color:var(--muted);font-size:9px">(akan dibuat di server)</span></label>
+          <input type="text" class="form-input" id="trDatasetPath" value="dataset" placeholder="dataset">
+        </div>
+
+        <!-- Class distribution -->
+        <div style="margin-top:10px">
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:6px;text-transform:uppercase">Distribusi Kelas</div>
+          <div class="class-distribution" id="trClassDist" style="max-height:160px;overflow-y:auto"></div>
+        </div>
+
+        <!-- Prepare button -->
+        <button onclick="trPrepareDataset()" id="trPrepareBtn"
+          style="width:100%;margin-top:14px;padding:10px;background:linear-gradient(135deg,rgba(0,229,255,0.15),rgba(0,229,255,0.05));
+                 border:1px solid rgba(0,229,255,0.4);color:var(--accent);font-family:var(--mono);font-size:11px;
+                 letter-spacing:1px;border-radius:6px;cursor:pointer;transition:all 0.2s">
+          📤 EXPORT DATASET KE SERVER
+        </button>
+        <button onclick="trCheckDataset()" 
+          style="width:100%;margin-top:6px;padding:7px;background:transparent;
+                 border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:10px;
+                 letter-spacing:1px;border-radius:6px;cursor:pointer">
+          🔍 CEK DATASET DI SERVER
+        </button>
+        <div id="trPrepareStatus" style="display:none;margin-top:8px;font-family:var(--mono);font-size:9px;color:var(--accent3);text-align:center"></div>
+      </div>
+
+      <!-- ══ STEP 2: CONFIG ══ -->
+      <div class="card" id="stepCard2">
+        <div class="card-title">⚙ Step 2 — Konfigurasi Training</div>
+
+        <div class="form-row">
+          <label>Nama Model / Versi</label>
+          <input type="text" class="form-input" id="modelName" value="Clutch_v4" placeholder="Clutch_v4">
+        </div>
+
+        <div class="form-row">
+          <label>Arsitektur YOLO</label>
+          <select class="form-select" id="architecture">
+            <option value="yolov8n">YOLOv8n — Nano (paling cepat, cocok dataset kecil)</option>
+            <option value="yolov8s" selected>YOLOv8s — Small (seimbang ✓ rekomendasi)</option>
+            <option value="yolov8m">YOLOv8m — Medium (lebih akurat, butuh GPU)</option>
+            <option value="yolov8l">YOLOv8l — Large (terbaik, butuh GPU kuat)</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label>Base Weights <span style="color:var(--muted);font-size:9px">(transfer learning)</span></label>
+          <select class="form-select" id="trBaseWeights">
+            <option value="yolov8s.pt">yolov8s.pt (ImageNet pretrained — rekomendasi)</option>
+            <option value="yolov8n.pt">yolov8n.pt (ImageNet Nano)</option>
+            <option value="yolov8m.pt">yolov8m.pt (ImageNet Medium)</option>
+            <option value="custom">Custom .pt dari disk...</option>
+          </select>
+          <input type="text" class="form-input" id="trCustomWeights" placeholder="path/to/best.pt"
+            style="margin-top:4px;display:none" oninput="">
+        </div>
+
+        <div class="form-row-2" style="margin-top:8px">
+          <div class="form-row" style="margin:0">
+            <label>Epochs</label>
+            <input type="number" class="form-input" id="epochs" value="100" min="10" max="1000">
+          </div>
+          <div class="form-row" style="margin:0">
+            <label>Batch Size</label>
+            <select class="form-select" id="batchSize">
+              <option value="4">4 (CPU / RAM kecil)</option>
+              <option value="8">8</option>
+              <option value="16" selected>16 (rekomendasi)</option>
+              <option value="32">32</option>
+              <option value="-1">-1 (auto)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label>Image Size</label>
+          <select class="form-select" id="trImgSize">
+            <option value="416">416 × 416</option>
+            <option value="640" selected>640 × 640 (rekomendasi)</option>
+            <option value="1280">1280 × 1280 (butuh VRAM besar)</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label>Learning Rate — <span id="lrVal" style="color:var(--accent)">0.001</span></label>
+          <div class="slider-wrap">
+            <input type="range" min="1" max="100" value="10" oninput="updateLR(this)" style="accent-color:var(--accent)">
+          </div>
+        </div>
+
+        <!-- Augmentation toggles -->
+        <div style="margin-top:10px">
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:8px;text-transform:uppercase">Augmentasi</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
+              <input type="checkbox" id="augFlip" checked style="accent-color:var(--accent)"> Horizontal Flip
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
+              <input type="checkbox" id="augRotate" checked style="accent-color:var(--accent)"> Rotasi ±10°
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
+              <input type="checkbox" id="augBrightness" checked style="accent-color:var(--accent)"> Brightness/Contrast
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
+              <input type="checkbox" id="augMosaic" checked style="accent-color:var(--accent)"> Mosaic
+            </label>
+          </div>
+        </div>
+
+        <!-- Patience / early stopping -->
+        <div class="form-row" style="margin-top:10px">
+          <label>Early Stopping Patience <span style="color:var(--muted);font-size:9px">(0 = nonaktif)</span></label>
+          <input type="number" class="form-input" id="trPatience" value="20" min="0" max="100">
+        </div>
+
+        <!-- Generated command preview -->
+        <div style="margin-top:12px">
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;text-transform:uppercase">Preview Perintah</div>
+          <div id="trCmdPreview" onclick="trCopyCmd()" title="Klik untuk copy"
+            style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px 10px;
+                   font-family:var(--mono);font-size:9px;color:var(--accent3);line-height:1.6;
+                   white-space:pre-wrap;word-break:break-all;cursor:pointer;user-select:all"></div>
+          <div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:3px">↑ Klik untuk copy · Jalankan manual jika backend tidak tersambung</div>
+        </div>
+        <button onclick="trUpdateCmd()" style="width:100%;margin-top:8px;padding:7px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:10px;border-radius:4px;cursor:pointer">↻ Update Preview</button>
+      </div>
+    </div>
+
+    <!-- ══ STEP 3: TRAINING PROGRESS ══ -->
+    <div class="training-progress-card" id="stepCard3" style="margin-top:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--accent);text-transform:uppercase">⚡ Step 3 — Training</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="display:flex;align-items:center;gap:6px">
+            <div id="trBackendDot" style="width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0"></div>
+            <span id="trBackendLabel" style="font-family:var(--mono);font-size:9px;color:var(--muted)">Backend tidak tersambung</span>
+          </div>
+          <button onclick="trCheckBackend()" style="background:transparent;border:1px solid var(--border);color:var(--muted);font-size:9px;padding:3px 8px;border-radius:3px;cursor:pointer;font-family:var(--mono)">Cek Koneksi</button>
+        </div>
+      </div>
+
+      <!-- Mode pilihan: via backend API atau command manual -->
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <label style="flex:1;display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--border);border-radius:5px;cursor:pointer;font-size:11px;background:var(--surface2)" id="trModeApiLabel">
+          <input type="radio" name="trMode" value="api" id="trModeApi" checked onchange="trModeChanged()" style="accent-color:var(--accent)">
+          🐍 Via Backend API <span style="font-size:9px;color:var(--muted)">(otomatis)</span>
+        </label>
+        <label style="flex:1;display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--border);border-radius:5px;cursor:pointer;font-size:11px" id="trModeManualLabel">
+          <input type="radio" name="trMode" value="manual" id="trModeManual" onchange="trModeChanged()" style="accent-color:var(--accent)">
+          💻 Jalankan Manual <span style="font-size:9px;color:var(--muted)">(copy command)</span>
+        </label>
+      </div>
+
+      <div class="progress-header">
+        <div class="progress-status" id="trainStatusLabel">
+          <div class="dot" style="background:var(--muted)"></div>
+          <span>Siap untuk Training</span>
+        </div>
+        <div class="epoch-display" id="epochDisplay">0 / 100 Epoch</div>
+      </div>
+      <div class="progress-bar-wrap" style="margin:8px 0">
+        <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <div class="metrics-live">
+        <div class="metric-box"><span class="m-val" id="mPrecision" style="color:var(--accent)">—</span><div class="m-lbl">Precision</div></div>
+        <div class="metric-box"><span class="m-val" id="mRecall" style="color:var(--accent2)">—</span><div class="m-lbl">Recall</div></div>
+        <div class="metric-box"><span class="m-val" id="mMap50" style="color:var(--accent3)">—</span><div class="m-lbl">mAP@50</div></div>
+        <div class="metric-box"><span class="m-val" id="mLoss" style="color:var(--warn)">—</span><div class="m-lbl">Box Loss</div></div>
+      </div>
+      <div class="log-area" id="trainLog" style="height:200px">
+        <span class="log-line info">[INFO] Lengkapi Step 1 dan Step 2, lalu klik Mulai Training.</span><br>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn-train" id="trainBtn" onclick="toggleTraining()" style="flex:1">⚡ MULAI TRAINING</button>
+        <button id="trPollBtn" onclick="trTogglePoll()" style="display:none;padding:10px 16px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:10px;border-radius:6px;cursor:pointer">⏸ Pause Poll</button>
+      </div>
+    </div>
+
+    <!-- ══ STEP 4: DEPLOY ══ -->
+    <div class="card" id="stepCard4" style="margin-top:16px">
+      <div class="card-title">🚀 Step 4 — Deploy & Auto-Label</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <!-- Hasil training -->
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:12px">
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:8px;text-transform:uppercase">Weight Terakhir</div>
+          <div id="trLastWeight" style="font-family:var(--mono);font-size:10px;color:var(--muted)">Belum ada training</div>
+          <div id="trLastMetrics" style="margin-top:6px;font-family:var(--mono);font-size:9px;color:var(--accent3)"></div>
+          <button id="trLoadWeightBtn" onclick="trLoadWeightToBackend()" disabled
+            style="width:100%;margin-top:10px;padding:7px;background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.3);
+                   color:var(--accent);font-family:var(--mono);font-size:10px;border-radius:4px;cursor:pointer;letter-spacing:1px">
+            📡 LOAD KE BACKEND
+          </button>
+        </div>
+
+        <!-- Load custom weight -->
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:12px">
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:8px;text-transform:uppercase">Load Weight Manual</div>
+          <input type="text" class="form-input" id="trManualWeightPath" placeholder="runs/detect/Clutch_v4/weights/best.pt"
+            style="font-size:9px">
+          <button onclick="trLoadManualWeight()"
+            style="width:100%;margin-top:8px;padding:7px;background:rgba(57,255,20,0.1);border:1px solid rgba(57,255,20,0.3);
+                   color:var(--accent3);font-family:var(--mono);font-size:10px;border-radius:4px;cursor:pointer">
+            📂 LOAD WEIGHT INI
+          </button>
+        </div>
+      </div>
+
+      <!-- Status backend + tombol auto-label -->
+      <div id="trDeployStatus" style="display:none;padding:10px;background:rgba(57,255,20,0.07);border:1px solid rgba(57,255,20,0.25);border-radius:6px;margin-bottom:12px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--accent3)" id="trDeployStatusText"></div>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button onclick="trAutoLabelAll()" id="trAutoLabelBtn"
+          style="flex:1;padding:11px;background:linear-gradient(135deg,rgba(57,255,20,0.15),rgba(57,255,20,0.05));
+                 border:1px solid rgba(57,255,20,0.4);color:var(--accent3);font-family:var(--mono);font-size:11px;
+                 letter-spacing:1px;border-radius:6px;cursor:pointer;transition:all 0.2s">
+          🤖 AUTO-LABEL SEMUA GAMBAR
+        </button>
+        <button onclick="trAutoLabelUnlabeled()" id="trAutoLabelNewBtn"
+          style="flex:1;padding:11px;background:linear-gradient(135deg,rgba(57,255,20,0.10),rgba(57,255,20,0.02));
+                 border:1px solid rgba(57,255,20,0.25);color:var(--accent3);font-family:var(--mono);font-size:11px;
+                 letter-spacing:1px;border-radius:6px;cursor:pointer;transition:all 0.2s">
+          🤖 AUTO-LABEL GAMBAR BARU SAJA
+        </button>
+      </div>
+      <div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:6px;text-align:center">
+        Setelah auto-label selesai → kembali ke halaman Labeling → koreksi jika perlu → training ulang untuk meningkatkan akurasi
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- PAGE: RESULTS -->
+<div class="page" id="page-results">
+  <div class="results-layout">
+    <div style="max-width:1100px;margin:0 auto;">
+      <div class="page-header">
+        <h2>Hasil Training</h2>
+        <p>Monitoring performa model dan riwayat training</p>
+      </div>
+    </div>
+    <div class="results-grid">
+      <div class="kpi-card c1"><div class="kpi-label">Best mAP@50</div><div class="kpi-value">0.923</div><div class="kpi-sub">Clutch_v3 · epoch 87</div></div>
+      <div class="kpi-card c2"><div class="kpi-label">Precision</div><div class="kpi-value">0.911</div><div class="kpi-sub">+2.3% vs v2</div></div>
+      <div class="kpi-card c3"><div class="kpi-label">Recall</div><div class="kpi-value">0.897</div><div class="kpi-sub">+1.1% vs v2</div></div>
+      <div class="kpi-card c4"><div class="kpi-label">Total Model</div><div class="kpi-value">3</div><div class="kpi-sub">1 deployed · 2 ready</div></div>
+    </div>
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-title">mAP Curve — Clutch_v3<div class="chart-legend"><div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>mAP@50</div><div class="legend-item"><div class="legend-dot" style="background:var(--accent2)"></div>mAP@50:95</div></div></div>
+        <canvas id="mapChart" height="180"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Loss Curve — Clutch_v3<div class="chart-legend"><div class="legend-item"><div class="legend-dot" style="background:var(--warn)"></div>Box Loss</div><div class="legend-item"><div class="legend-dot" style="background:var(--danger)"></div>Cls Loss</div></div></div>
+        <canvas id="lossChart" height="180"></canvas>
+      </div>
+      <div class="chart-card"><div class="chart-title">mAP per Kelas — Clutch_v3</div><canvas id="classChart" height="180"></canvas></div>
+      <div class="chart-card"><div class="chart-title">Perbandingan Model</div><canvas id="compareChart" height="180"></canvas></div>
+    </div>
+    <div class="models-table-wrap">
+      <div class="table-header">📋 Riwayat Model</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Nama Model</th><th>Arsitektur</th><th>Epoch</th><th>mAP@50</th>
+            <th>Precision</th><th>Recall</th><th>Status</th><th>Tanggal</th><th>Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="modelTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ ROTATE AROUND AXIS OVERLAY ═══ -->
+<div id="rotateOverlay" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  z-index:9000;background:var(--surface2);border:1px solid rgba(255,214,0,0.5);border-radius:10px;
+  padding:14px 18px;display:none;flex-direction:column;gap:10px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.5);min-width:360px;backdrop-filter:blur(8px)">
+
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:#ffd600;text-transform:uppercase">
+      ↻ Rotate Around Axis
+    </div>
+    <div style="display:flex;gap:6px">
+      <button onclick="rotatePivotToCenter()" title="Reset pivot ke tengah seleksi"
+        style="background:rgba(255,214,0,0.1);border:1px solid rgba(255,214,0,0.3);color:#ffd600;
+               font-size:9px;padding:3px 8px;border-radius:3px;cursor:pointer;font-family:var(--mono)">
+        ⊕ Center
+      </button>
+      <button onclick="closeRotateOverlay(false)"
+        style="background:transparent;border:1px solid var(--border);color:var(--muted);
+               font-size:11px;width:22px;height:22px;border-radius:3px;cursor:pointer">✕</button>
+    </div>
+  </div>
+
+  <!-- Angle slider -->
+  <div style="display:flex;align-items:center;gap:10px">
+    <span style="font-family:var(--mono);font-size:9px;color:var(--muted);white-space:nowrap">Sudut</span>
+    <input type="range" id="rotateSlider" min="-180" max="180" value="0" step="0.5"
+      oninput="applyRotation(this.value);document.getElementById('rotateAngleInput').value=parseFloat(this.value).toFixed(1)"
+      style="flex:1;accent-color:#ffd600">
+    <input type="number" id="rotateAngleInput" value="0" min="-180" max="180" step="0.5"
+      oninput="document.getElementById('rotateSlider').value=this.value;applyRotation(this.value)"
+      style="width:60px;background:var(--bg);border:1px solid var(--border);color:var(--fg);
+             font-family:var(--mono);font-size:11px;padding:3px 6px;border-radius:3px;text-align:center">
+    <span id="rotateAngleDisplay" style="font-family:var(--mono);font-size:12px;color:#ffd600;min-width:40px">0°</span>
+  </div>
+
+  <!-- Quick angle buttons -->
+  <div style="display:flex;gap:5px;justify-content:center">
+    <span style="font-family:var(--mono);font-size:9px;color:var(--muted);align-self:center">Snap:</span>
+    <button onclick="snapRotate(-90)" style="background:rgba(255,214,0,0.08);border:1px solid rgba(255,214,0,0.2);color:#ffd600;font-size:9px;padding:3px 8px;border-radius:3px;cursor:pointer;font-family:var(--mono)">-90°</button>
+    <button onclick="snapRotate(-45)" style="background:rgba(255,214,0,0.08);border:1px solid rgba(255,214,0,0.2);color:#ffd600;font-size:9px;padding:3px 8px;border-radius:3px;cursor:pointer;font-family:var(--mono)">-45°</button>
+    <button onclick="snapRotate(-30)" style="background:rgba(255,214,0,0.08);border:1px solid rgba(255,214,0,0.2);color:#ffd600;font-size:9px;padding:3px 8px;border-radius:3px;cursor:pointer;font-family:var(--mono)">-30°</button>
+    <button onclick="snapRotate(30)"  style="background:rgba(255,214,0,0.08);border:1px solid rgba(255,214,0,0.2);color:#ffd600;font-size:9px;padding:3px 8px;border-radius:3px;cursor:pointer;font-family:var(--mono)">+30°</button>
+    <button onclick="snapRotate(45)"  style="background:rgba(255,214,0,0.08);border:1px solid rgba(255,214,0,0.2);color:#ffd600;font-size:9px;padding:3px 8px;border-radius:3px;cursor:pointer;font-family:var(--mono)">+45°</button>
+    <button onclick="snapRotate(90)"  style="background:rgba(255,214,0,0.08);border:1px solid rgba(255,214,0,0.2);color:#ffd600;font-size:9px;padding:3px 8px;border-radius:3px;cursor:pointer;font-family:var(--mono)">+90°</button>
+  </div>
+
+  <!-- Pivot position -->
+  <div style="display:flex;align-items:center;gap:8px">
+    <span style="font-family:var(--mono);font-size:9px;color:var(--muted);white-space:nowrap">Pivot X,Y</span>
+    <input type="number" id="rotatePivotX" value="0" oninput="updatePivotFromInputs()"
+      style="width:70px;background:var(--bg);border:1px solid rgba(255,214,0,0.3);color:#ffd600;
+             font-family:var(--mono);font-size:10px;padding:3px 6px;border-radius:3px;text-align:center">
+    <input type="number" id="rotatePivotY" value="0" oninput="updatePivotFromInputs()"
+      style="width:70px;background:var(--bg);border:1px solid rgba(255,214,0,0.3);color:#ffd600;
+             font-family:var(--mono);font-size:10px;padding:3px 6px;border-radius:3px;text-align:center">
+    <span style="font-family:var(--mono);font-size:8px;color:var(--muted)">(atau klik canvas untuk pindah pivot)</span>
+  </div>
+
+  <!-- Fine nudge -->
+  <div style="display:flex;align-items:center;gap:6px;justify-content:center">
+    <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">Nudge</span>
+    <button onclick="nudgeRotate(-5)"  style="background:var(--surface);border:1px solid var(--border);color:var(--fg);font-size:10px;padding:3px 10px;border-radius:3px;cursor:pointer;font-family:var(--mono)">-5°</button>
+    <button onclick="nudgeRotate(-1)"  style="background:var(--surface);border:1px solid var(--border);color:var(--fg);font-size:10px;padding:3px 10px;border-radius:3px;cursor:pointer;font-family:var(--mono)">-1°</button>
+    <button onclick="nudgeRotate(-0.5)" style="background:var(--surface);border:1px solid var(--border);color:var(--fg);font-size:10px;padding:3px 10px;border-radius:3px;cursor:pointer;font-family:var(--mono)">-0.5°</button>
+    <button onclick="nudgeRotate(0.5)" style="background:var(--surface);border:1px solid var(--border);color:var(--fg);font-size:10px;padding:3px 10px;border-radius:3px;cursor:pointer;font-family:var(--mono)">+0.5°</button>
+    <button onclick="nudgeRotate(1)"   style="background:var(--surface);border:1px solid var(--border);color:var(--fg);font-size:10px;padding:3px 10px;border-radius:3px;cursor:pointer;font-family:var(--mono)">+1°</button>
+    <button onclick="nudgeRotate(5)"   style="background:var(--surface);border:1px solid var(--border);color:var(--fg);font-size:10px;padding:3px 10px;border-radius:3px;cursor:pointer;font-family:var(--mono)">+5°</button>
+  </div>
+
+  <!-- Apply / Cancel -->
+  <div style="display:flex;gap:8px;margin-top:2px">
+    <button onclick="closeRotateOverlay(false)"
+      style="flex:1;padding:8px;background:transparent;border:1px solid var(--border);color:var(--muted);
+             font-family:var(--mono);font-size:10px;border-radius:5px;cursor:pointer;letter-spacing:1px">
+      ✕ BATAL
+    </button>
+    <button onclick="closeRotateOverlay(true)"
+      style="flex:2;padding:8px;background:linear-gradient(135deg,rgba(255,214,0,0.2),rgba(255,214,0,0.05));
+             border:1px solid rgba(255,214,0,0.5);color:#ffd600;font-family:var(--mono);
+             font-size:10px;border-radius:5px;cursor:pointer;letter-spacing:1px;font-weight:600">
+      ✓ TERAPKAN ROTATE
+    </button>
+  </div>
+</div>
+
+<div class="notification" id="notification"></div>
+
+<!-- ═══ EXPORT CONFLICT MODAL ═══ -->
+<div class="modal-overlay" id="exportConflictModal" style="z-index:100000">
+  <div class="modal" style="width:500px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column;gap:0">
+    <h3 style="margin-bottom:6px">⚠ File TXT Sudah Ada</h3>
+    <p id="exportConflictSummary" style="margin-bottom:12px;font-size:12px;color:var(--warn)"></p>
+
+    <!-- File list -->
+    <div style="margin-bottom:14px">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between">
+        <span id="exportConflictListLabel">File yang sudah ada:</span>
+        <span id="exportConflictNewLabel" style="color:var(--accent3)"></span>
+      </div>
+      <!-- Existing files -->
+      <div id="exportConflictList"
+        style="max-height:180px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);
+               border-radius:5px;padding:4px 6px;margin-bottom:8px">
+      </div>
+      <!-- New files (only if there are some) -->
+      <div id="exportNewFilesWrap" style="display:none">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--accent3);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">
+          File baru (belum ada):
+        </div>
+        <div id="exportNewFilesList"
+          style="max-height:100px;overflow-y:auto;background:rgba(57,255,20,0.04);border:1px solid rgba(57,255,20,0.2);
+                 border-radius:5px;padding:4px 6px">
+        </div>
+      </div>
+    </div>
+
+    <!-- Action buttons -->
+    <div style="display:flex;flex-direction:column;gap:7px">
+      <button id="exportBtnOverwriteAll" onclick="exportConflictResolve('overwrite_all')"
+        style="padding:10px;background:rgba(255,61,90,0.15);border:1px solid rgba(255,61,90,0.5);
+               color:var(--danger);font-family:var(--mono);font-size:10px;font-weight:700;
+               letter-spacing:1px;border-radius:5px;cursor:pointer;text-align:left;
+               transition:background 0.15s"
+        onmouseenter="this.style.background='rgba(255,61,90,0.25)'"
+        onmouseleave="this.style.background='rgba(255,61,90,0.15)'">
+        🔄 TIMPA SEMUA — Ganti file lama + tulis file baru
+        <div style="font-size:9px;color:var(--muted);font-weight:400;margin-top:2px" id="exportBtnOverwriteAllDesc"></div>
+      </button>
+      <button id="exportBtnNewOnly" onclick="exportConflictResolve('new_only')"
+        style="padding:10px;background:rgba(57,255,20,0.1);border:1px solid rgba(57,255,20,0.35);
+               color:var(--accent3);font-family:var(--mono);font-size:10px;font-weight:700;
+               letter-spacing:1px;border-radius:5px;cursor:pointer;text-align:left;
+               transition:background 0.15s"
+        onmouseenter="this.style.background='rgba(57,255,20,0.2)'"
+        onmouseleave="this.style.background='rgba(57,255,20,0.1)'">
+        ✨ FILE BARU SAJA — Hanya tulis yang belum ada
+        <div style="font-size:9px;color:var(--muted);font-weight:400;margin-top:2px" id="exportBtnNewOnlyDesc"></div>
+      </button>
+      <button onclick="closeExportConflictModal()"
+        style="padding:8px;background:transparent;border:1px solid var(--border);
+               color:var(--muted);font-family:var(--mono);font-size:10px;
+               letter-spacing:1px;border-radius:5px;cursor:pointer">
+        ✕ BATAL
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CTRL+F FIND PANEL ═══ -->
+<div class="find-panel" id="findPanel">
+  <div class="find-panel-title">
+    <span>🔍 Cari Box #</span>
+    <button class="find-panel-close" onclick="closeFindPanel()" title="Tutup [Esc]">✕</button>
+  </div>
+  <div class="find-input-row">
+    <input class="find-input" id="findInput" type="number" min="1"
+      placeholder="No. box..."
+      oninput="findBoxByNumber()"
+      onkeydown="handleFindKey(event)">
+  </div>
+  <div class="find-nav-row">
+    <button class="find-nav-btn" id="findPrevBtn" onclick="findNavigate(-1)" disabled>◀ Prev</button>
+    <button class="find-nav-btn" id="findNextBtn" onclick="findNavigate(+1)" disabled>Next ▶</button>
+  </div>
+  <div class="find-status" id="findStatus">Ketik nomor box untuk mencari</div>
+</div>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h3 id="modalTitle">Konfirmasi</h3>
+    <p id="modalMsg">Apakah Anda yakin?</p>
+    <div class="modal-actions" id="modalActions">
+      <button class="btn-cancel" onclick="closeModal()">Batal</button>
+      <button class="btn-confirm" id="modalConfirm">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CUSTOM MODEL MANAGER MODAL ═══ -->
+<div class="modal-overlay" id="customModelModal" style="z-index:100001;align-items:flex-start;padding-top:40px">
+  <div class="modal" style="width:620px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden">
+
+    <!-- Header -->
+    <div style="padding:18px 22px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div>
+        <h3 style="font-family:var(--mono);font-size:13px;color:var(--accent);letter-spacing:2px;text-transform:uppercase;margin:0" id="customModelModalTitle">⊕ Tambah Model Baru</h3>
+        <p style="font-size:11px;color:var(--muted);margin:4px 0 0">Definisikan nama model dan kelengkapan komponen (kelas + jumlah)</p>
+      </div>
+      <button onclick="closeCustomModelModal()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:14px;width:28px;height:28px;border-radius:4px;cursor:pointer;flex-shrink:0">✕</button>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:16px 22px;flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:14px">
+
+      <!-- Model Name -->
+      <div>
+        <label style="display:block;font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">
+          Nama / Part Number Model <span style="color:var(--danger)">*</span>
+        </label>
+        <input type="text" id="cmModelName" placeholder="Contoh: XYZ-999 atau CUSTOM-01"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);
+                 font-family:var(--mono);font-size:12px;padding:8px 11px;border-radius:5px;outline:none"
+          oninput="cmValidateName()" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        <div id="cmNameError" style="font-family:var(--mono);font-size:9px;color:var(--danger);margin-top:4px;display:none"></div>
+      </div>
+
+      <!-- Class Search + Select All -->
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <label style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">
+            Komponen Kelas &amp; Jumlah
+            <span id="cmSelectedCount" style="color:var(--accent);margin-left:6px">0 dipilih</span>
+            <span style="font-size:8px;color:var(--muted);margin-left:6px;text-transform:none;letter-spacing:0">(klik kelas untuk tambah · ✕ untuk hapus)</span>
+          </label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="text" id="cmClassSearch" placeholder="🔍 Cari kelas..." oninput="cmFilterClasses()"
+              style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);
+                     font-size:10px;padding:4px 8px;border-radius:4px;outline:none;width:130px">
+            <button onclick="cmSelectAll()" style="background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.3);
+              color:var(--accent);font-family:var(--mono);font-size:9px;padding:4px 8px;border-radius:3px;cursor:pointer">Pilih Semua</button>
+            <button onclick="cmClearAll()" style="background:rgba(255,61,90,0.1);border:1px solid rgba(255,61,90,0.3);
+              color:var(--danger);font-family:var(--mono);font-size:9px;padding:4px 8px;border-radius:3px;cursor:pointer">Reset</button>
+          </div>
+        </div>
+
+        <!-- Class grid -->
+        <div id="cmClassGrid" style="display:grid;grid-template-columns:1fr;gap:3px;max-height:360px;overflow-y:auto;
+          padding:6px;background:var(--bg);border:1px solid var(--border);border-radius:6px">
+          <!-- populated by JS -->
+        </div>
+      </div>
+
+      <!-- Summary preview -->
+      <div id="cmSummaryWrap" style="display:none">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">
+          Preview BOM
+        </div>
+        <div id="cmSummary" style="background:var(--bg);border:1px solid var(--border);border-radius:5px;
+          padding:8px 10px;font-family:var(--mono);font-size:9px;color:var(--muted);line-height:2;max-height:100px;overflow-y:auto"></div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0">
+      <button id="cmResetBuiltinBtn" style="display:none;padding:9px 12px;
+        background:rgba(255,214,0,0.08);border:1px solid rgba(255,214,0,0.35);
+        color:var(--warn);font-family:var(--mono);font-size:9px;border-radius:5px;cursor:pointer">
+        ↺ Reset Default
+      </button>
+      <button onclick="closeCustomModelModal()" style="flex:1;padding:9px;background:transparent;border:1px solid var(--border);
+        color:var(--muted);font-family:var(--mono);font-size:10px;letter-spacing:1px;border-radius:5px;cursor:pointer">
+        ✕ BATAL
+      </button>
+      <button onclick="cmSaveModel()" id="cmSaveBtn"
+        style="flex:2;padding:9px;background:linear-gradient(135deg,rgba(0,229,255,0.2),rgba(0,229,255,0.05));
+               border:1px solid rgba(0,229,255,0.5);color:var(--accent);font-family:var(--mono);
+               font-size:10px;letter-spacing:1px;font-weight:700;border-radius:5px;cursor:pointer">
+        ✓ SIMPAN MODEL
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CUSTOM MODELS LIST MODAL ═══ -->
+<div class="modal-overlay" id="customModelListModal" style="z-index:100000;align-items:flex-start;padding-top:40px">
+  <div class="modal" style="width:500px;max-width:96vw;max-height:85vh;display:flex;flex-direction:column;padding:0;overflow:hidden">
+    <div style="padding:16px 20px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <h3 style="font-family:var(--mono);font-size:13px;color:var(--accent);letter-spacing:2px;text-transform:uppercase;margin:0">
+        📦 Kelola Model
+      </h3>
+      <button onclick="closeCustomModelListModal()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:14px;width:28px;height:28px;border-radius:4px;cursor:pointer">✕</button>
+    </div>
+    <!-- Tab bar -->
+    <div style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0">
+      <button id="cmTabCustom" onclick="cmSwitchTab('custom')"
+        style="flex:1;padding:8px;font-family:var(--mono);font-size:9px;letter-spacing:0.5px;
+               background:rgba(0,229,255,0.06);border:none;border-bottom:2px solid var(--accent);
+               color:var(--accent);cursor:pointer">✦ CUSTOM</button>
+      <button id="cmTabBuiltin" onclick="cmSwitchTab('builtin')"
+        style="flex:1;padding:8px;font-family:var(--mono);font-size:9px;letter-spacing:0.5px;
+               background:transparent;border:none;border-bottom:2px solid transparent;
+               color:var(--muted);cursor:pointer">⚙ BAWAAN</button>
+    </div>
+    <div id="customModelListBody" style="flex:1;overflow-y:auto;padding:10px 14px"></div>
+    <div style="padding:10px 14px;border-top:1px solid var(--border);flex-shrink:0;display:flex;flex-direction:column;gap:6px">
+      <!-- Import / Export row -->
+      <div style="display:flex;gap:5px">
+        <button onclick="exportModelsJSON()" title="Export semua model ke file JSON"
+          style="flex:1;padding:7px;background:rgba(57,255,20,0.06);border:1px solid rgba(57,255,20,0.25);
+                 color:#39ff14;font-family:var(--mono);font-size:9px;letter-spacing:0.5px;
+                 border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
+          ⬇ Export JSON
+        </button>
+        <button onclick="document.getElementById('importModelsFile').click()" title="Import model dari file JSON"
+          style="flex:1;padding:7px;background:rgba(255,214,0,0.06);border:1px solid rgba(255,214,0,0.25);
+                 color:var(--warn);font-family:var(--mono);font-size:9px;letter-spacing:0.5px;
+                 border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
+          ⬆ Import JSON
+        </button>
+        <input type="file" id="importModelsFile" accept=".json" style="display:none"
+               onchange="importModelsJSON(event)">
+      </div>
+      <!-- Add new model button -->
+      <button onclick="openCustomModelModal()" style="width:100%;padding:9px;background:linear-gradient(135deg,rgba(0,229,255,0.15),rgba(0,229,255,0.05));
+        border:1px solid rgba(0,229,255,0.4);color:var(--accent);font-family:var(--mono);font-size:10px;
+        letter-spacing:1px;font-weight:700;border-radius:5px;cursor:pointer">
+        ⊕ TAMBAH MODEL BARU
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+
+  <!-- ═══ EDIT CLASS MODAL ═══ -->
+  <div id="editClassModal" class="modal-overlay" style="display:none;z-index:3100">
+    <div class="modal-box" style="width:460px;max-width:96vw;max-height:90vh;overflow-y:auto">
+      <div class="modal-header">
+        <span class="modal-title">✎ Edit Kelas</span>
+        <button class="modal-close" onclick="closeEditClassModal()">✕</button>
+      </div>
+
+      <!-- Name + color preview row -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <div id="ecColorPreview" style="width:22px;height:22px;border-radius:4px;border:1px solid var(--border);flex-shrink:0;cursor:pointer"
+             onclick="document.getElementById('ecHexInput').focus()"></div>
+        <div style="flex:1">
+          <input id="ecClassName" type="text" placeholder="Nama kelas..."
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);
+                   font-family:var(--mono);font-size:12px;padding:6px 9px;border-radius:4px"
+            oninput="document.getElementById('ecNameError').style.display='none'"
+            onkeydown="if(event.key==='Enter')saveEditClass()">
+        </div>
+        <span id="ecClassIndex" style="font-family:var(--mono);font-size:9px;color:var(--muted);white-space:nowrap"></span>
+      </div>
+
+      <div id="ecNameError" style="display:none;font-family:var(--mono);font-size:9px;color:var(--danger);margin-bottom:8px;padding:5px 8px;background:rgba(255,61,90,0.08);border-radius:3px"></div>
+      <div id="ecUsageNote" style="font-family:var(--mono);font-size:9px;margin-bottom:12px;padding:4px 8px;background:var(--surface2);border-radius:3px"></div>
+
+      <!-- Color palette -->
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:6px;letter-spacing:0.5px">PILIH WARNA</div>
+      <div id="ecPaletteGrid"
+           style="display:grid;grid-template-columns:repeat(10,1fr);gap:5px;margin-bottom:10px"></div>
+
+      <!-- Hex input -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+        <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">#HEX</span>
+        <input id="ecHexInput" type="text" placeholder="#rrggbb" maxlength="7"
+          style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);
+                 font-family:var(--mono);font-size:11px;padding:5px 8px;border-radius:4px"
+          oninput="ecHexChanged()">
+      </div>
+
+      <!-- Action buttons -->
+      <div style="display:flex;gap:8px">
+        <button id="ecDeleteBtn" onclick="deleteEditClass()"
+          style="padding:8px 14px;background:rgba(255,61,90,0.08);border:1px solid rgba(255,61,90,0.3);
+                 color:var(--danger);font-family:var(--mono);font-size:10px;border-radius:4px;cursor:pointer">
+          🗑 Hapus
+        </button>
+        <div style="flex:1"></div>
+        <button onclick="closeEditClassModal()"
+          style="padding:8px 18px;background:var(--surface2);border:1px solid var(--border);
+                 color:var(--muted);font-family:var(--mono);font-size:10px;border-radius:4px;cursor:pointer">
+          Batal
+        </button>
+        <button onclick="saveEditClass()"
+          style="padding:8px 22px;background:var(--accent);border:none;
+                 color:#000;font-family:var(--mono);font-size:10px;font-weight:bold;border-radius:4px;cursor:pointer">
+          ✓ Simpan
+        </button>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
